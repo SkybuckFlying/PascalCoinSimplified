@@ -108,7 +108,6 @@ Type
   TRPCProcess = class(TPCThread)
   private
     FSock:TTCPBlockSocket;
-    FNode : TNode;
   public
     Constructor Create (hsock:tSocket);
     Destructor Destroy; override;
@@ -491,7 +490,6 @@ begin
   FSock:=TTCPBlockSocket.create;
   FSock.socket:=HSock;
   FreeOnTerminate:=true;
-  FNode := TNode.Node;
   //Priority:=tpNormal;
   inherited create(false);
   FreeOnTerminate:=true;
@@ -754,19 +752,19 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
 
   Function GetBlock(nBlock : Cardinal; jsonObject : TPCJSONObject) : Boolean;
   begin
-    If FNode.Bank.BlocksCount<=nBlock then begin
+    If PascalCoinNode.Bank.BlocksCount<=nBlock then begin
       ErrorNum := CT_RPC_ErrNum_InvalidBlock;
       ErrorDesc := 'Cannot load Block: '+IntToStr(nBlock);
       Result := False;
       Exit;
     end;
-    TPascalCoinJSONComp.FillBlockObject(nBlock,FNode,jsonObject);
+    TPascalCoinJSONComp.FillBlockObject(nBlock,PascalCoinNode,jsonObject);
     Result := True;
   end;
 
   Procedure FillOperationResumeToJSONObject(Const OPR : TOperationResume; jsonObject : TPCJSONObject);
   Begin
-    TPascalCoinJSONComp.FillOperationObject(OPR,FNode.Bank.BlocksCount,jsonObject);
+    TPascalCoinJSONComp.FillOperationObject(OPR,PascalCoinNode.Bank.BlocksCount,jsonObject);
   end;
 
   Function GetAccountOperations(accountNumber : Cardinal; jsonArray : TPCJSONArray; maxBlocksDepth, startReg, maxReg: Integer; forceStartBlock : Cardinal) : Boolean;
@@ -791,13 +789,13 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         // Only will return pending operations if start=0, otherwise
         list := TList.Create;
         Try
-          FNode.Operations.OperationsHashTree.GetOperationsAffectingAccount(accountNumber,list);
+          PascalCoinNode.Operations.OperationsHashTree.GetOperationsAffectingAccount(accountNumber,list);
           for i := list.Count - 1 downto 0 do begin
-            Op := FNode.Operations.OperationsHashTree.GetOperation(PtrInt(list[i]));
+            Op := PascalCoinNode.Operations.OperationsHashTree.GetOperation(PtrInt(list[i]));
             If TPCOperation.OperationToOperationResume(0,Op,False,accountNumber,OPR) then begin
               OPR.NOpInsideBlock := i;
-              OPR.Block := FNode.Operations.OperationBlock.block;
-              OPR.Balance := FNode.Operations.SafeBoxTransaction.Account(accountNumber).balance;
+              OPR.Block := PascalCoinNode.Operations.OperationBlock.block;
+              OPR.Balance := PascalCoinNode.Operations.SafeBoxTransaction.Account(accountNumber).balance;
               if (nCounter>=startReg) And (nCounter<maxReg) then begin
                 OperationsResume.Add(OPR);
               end;
@@ -810,7 +808,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
       end;
       if (nCounter<maxReg) then begin
         if (startReg<0) then startReg := 0; // Prevent -1 value
-        FNode.GetStoredOperationsFromAccount(OperationsResume,accountNumber,maxBlocksDepth,startReg,startReg+maxReg-1,forceStartBlock);
+        PascalCoinNode.GetStoredOperationsFromAccount(OperationsResume,accountNumber,maxBlocksDepth,startReg,startReg+maxReg-1,forceStartBlock);
       end;
       for i:=0 to OperationsResume.Count-1 do begin
         Obj := jsonArray.GetAsObject(jsonArray.Count);
@@ -908,28 +906,28 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     opr : TOperationResume;
   begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent sends
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent sends
     try
       Result := false;
-      if (sender<0) or (sender>=FNode.Bank.AccountsCount) then begin
+      if (sender<0) or (sender>=PascalCoinNode.Bank.AccountsCount) then begin
         If (sender=CT_MaxAccount) then ErrorDesc := 'Need sender'
         else ErrorDesc:='Invalid sender account '+Inttostr(sender);
         ErrorNum:=CT_RPC_ErrNum_InvalidAccount;
         Exit;
       end;
-      if (target<0) or (target>=FNode.Bank.AccountsCount) then begin
+      if (target<0) or (target>=PascalCoinNode.Bank.AccountsCount) then begin
         If (target=CT_MaxAccount) then ErrorDesc := 'Need target'
         else ErrorDesc:='Invalid target account '+Inttostr(target);
         ErrorNum:=CT_RPC_ErrNum_InvalidAccount;
         Exit;
       end;
-      sacc := FNode.Operations.SafeBoxTransaction.Account(sender);
-      tacc := FNode.Operations.SafeBoxTransaction.Account(target);
+      sacc := PascalCoinNode.Operations.SafeBoxTransaction.Account(sender);
+      tacc := PascalCoinNode.Operations.SafeBoxTransaction.Account(target);
 
       opt := CreateOperationTransaction(sender,target,sacc.n_operation,amount,fee,sacc.accountInfo.accountKey,tacc.accountInfo.accountKey,RawPayload,Payload_method,EncodePwd);
       if opt=nil then exit;
       try
-        If not FNode.AddOperation(Nil,opt,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opt,errors) then begin
           ErrorDesc := 'Error adding operation: '+errors;
           ErrorNum := CT_RPC_ErrNum_InvalidOperation;
           Exit;
@@ -941,7 +939,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         opt.free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   end;
 
@@ -1035,20 +1033,20 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     opr : TOperationResume;
   begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := false;
-      if (account_signer<0) or (account_signer>=FNode.Bank.AccountsCount) then begin
+      if (account_signer<0) or (account_signer>=PascalCoinNode.Bank.AccountsCount) then begin
         ErrorDesc:='Invalid account '+Inttostr(account_signer);
         ErrorNum:=CT_RPC_ErrNum_InvalidAccount;
         Exit;
       end;
-      acc_signer := FNode.Operations.SafeBoxTransaction.Account(account_signer);
+      acc_signer := PascalCoinNode.Operations.SafeBoxTransaction.Account(account_signer);
 
       opck := CreateOperationChangeKey(account_signer,acc_signer.n_operation,account_target,acc_signer.accountInfo.accountKey,new_pub_key,fee,RawPayload,Payload_method,EncodePwd);
       if not assigned(opck) then exit;
       try
-        If not FNode.AddOperation(Nil,opck,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opck,errors) then begin
           ErrorDesc := 'Error adding operation: '+errors;
           ErrorNum := CT_RPC_ErrNum_InvalidOperation;
           Exit;
@@ -1060,7 +1058,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         opck.free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   end;
 
@@ -1272,7 +1270,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     operationsht : TOperationsHashTree;
     OperationsResumeList : TOperationsResumeList;
   begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := false;
       accountsnumber := TOrderedCardinalList.Create;
@@ -1286,12 +1284,12 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         try
           for ian := 0 to accountsnumber.Count - 1 do begin
 
-            if (accountsnumber.Get(ian)<0) or (accountsnumber.Get(ian)>=FNode.Bank.AccountsCount) then begin
+            if (accountsnumber.Get(ian)<0) or (accountsnumber.Get(ian)>=PascalCoinNode.Bank.AccountsCount) then begin
               ErrorDesc:='Invalid account '+Inttostr(accountsnumber.Get(ian));
               ErrorNum:=CT_RPC_ErrNum_InvalidAccount;
               Exit;
             end;
-            acc := FNode.Operations.SafeBoxTransaction.Account(accountsnumber.Get(ian));
+            acc := PascalCoinNode.Operations.SafeBoxTransaction.Account(accountsnumber.Get(ian));
             opck := CreateOperationChangeKey(acc.account,acc.n_operation,acc.account,acc.accountInfo.accountKey,new_pub_key,fee,RawPayload,Payload_method,EncodePwd);
             if not assigned(opck) then exit;
             try
@@ -1303,7 +1301,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
           // Ready to execute...
           OperationsResumeList := TOperationsResumeList.Create;
           Try
-            i := FNode.AddOperations(Nil,operationsht,OperationsResumeList, errors);
+            i := PascalCoinNode.AddOperations(Nil,operationsht,OperationsResumeList, errors);
             if (i<0) then begin
               ErrorNum:=CT_RPC_ErrNum_InternalError;
               ErrorDesc:=errors;
@@ -1324,7 +1322,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         accountsnumber.Free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   end;
 
@@ -1403,7 +1401,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
       errors := '';
       OperationsResumeList := TOperationsResumeList.Create;
       Try
-        i := FNode.AddOperations(Nil,OperationsHashTree,OperationsResumeList,errors);
+        i := PascalCoinNode.AddOperations(Nil,OperationsHashTree,OperationsResumeList,errors);
         if (i<0) then begin
           ErrorNum:=CT_RPC_ErrNum_InternalError;
           ErrorDesc:=errors;
@@ -1964,7 +1962,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     c_account : Cardinal;
   Begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := False;
       OperationsHashTree := TOperationsHashTree.Create;
@@ -1975,24 +1973,24 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
           Exit;
         end;
         c_account := params.AsCardinal('account_signer',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_signer '+params.AsString('account_signer','');
           Exit;
         end;
-        account_signer := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_signer := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (params.IndexOfName('account_target')<0) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Need account_target param';
           Exit;
         end;
         c_account := params.AsCardinal('account_target',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_target '+params.AsString('account_target','');
           Exit;
         end;
-        account_target := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_target := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (Not TAccountComp.EqualAccountKeys(account_signer.accountInfo.accountKey,account_target.accountInfo.accountKey)) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'account_signer and account_target have distinct keys. Cannot sign';
@@ -2000,7 +1998,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         end;
         If not SignListAccountForSaleEx(params,OperationsHashTree,account_signer.accountInfo.accountKey,account_signer.n_operation) then Exit;
         opt := OperationsHashTree.GetOperation(0);
-        If not FNode.AddOperation(Nil,opt,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opt,errors) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := errors;
           Exit;
@@ -2011,7 +2009,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         OperationsHashTree.Free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   End;
 
@@ -2023,7 +2021,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     c_account : Cardinal;
   Begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := False;
       OperationsHashTree := TOperationsHashTree.Create;
@@ -2034,24 +2032,24 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
           Exit;
         end;
         c_account := params.AsCardinal('account_signer',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_signer '+params.AsString('account_signer','');
           Exit;
         end;
-        account_signer := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_signer := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (params.IndexOfName('account_target')<0) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Need account_target param';
           Exit;
         end;
         c_account := params.AsCardinal('account_target',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_target '+params.AsString('account_target','');
           Exit;
         end;
-        account_target := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_target := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (Not TAccountComp.EqualAccountKeys(account_signer.accountInfo.accountKey,account_target.accountInfo.accountKey)) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'account_signer and account_target have distinct keys. Cannot sign';
@@ -2059,7 +2057,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         end;
         If not SignDelistAccountForSaleEx(params,OperationsHashTree,account_signer.accountInfo.accountKey,account_signer.n_operation) then Exit;
         opt := OperationsHashTree.GetOperation(0);
-        If not FNode.AddOperation(Nil,opt,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opt,errors) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := errors;
           Exit;
@@ -2070,7 +2068,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         OperationsHashTree.Free;
       end;
     finally
-      FNode.OperationSequenceLock.Acquire;
+      PascalCoinNode.OperationSequenceLock.Acquire;
     end;
   End;
 
@@ -2082,7 +2080,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     c_account : Cardinal;
   Begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := False;
       OperationsHashTree := TOperationsHashTree.Create;
@@ -2093,15 +2091,15 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
           Exit;
         end;
         c_account := params.AsCardinal('buyer_account',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account '+params.AsString('buyer_account','');
           Exit;
         end;
-        buyer_account := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        buyer_account := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         If not SignBuyAccountEx(params,OperationsHashTree,buyer_account.accountInfo.accountKey,buyer_account.n_operation) then Exit;
         opt := OperationsHashTree.GetOperation(0);
-        If not FNode.AddOperation(Nil,opt,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opt,errors) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := errors;
           Exit;
@@ -2112,7 +2110,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         OperationsHashTree.Free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   End;
 
@@ -2124,7 +2122,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     errors : AnsiString;
     c_account : Cardinal;
   Begin
-    FNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
+    PascalCoinNode.OperationSequenceLock.Acquire;  // Use lock to prevent N_Operation race-condition on concurrent invocations
     try
       Result := False;
       OperationsHashTree := TOperationsHashTree.Create;
@@ -2135,24 +2133,24 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
           Exit;
         end;
         c_account := params.AsCardinal('account_signer',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_signer '+params.AsString('account_signer','');
           Exit;
         end;
-        account_signer := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_signer := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (params.IndexOfName('account_target')<0) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Need account_target param';
           Exit;
         end;
         c_account := params.AsCardinal('account_target',0);
-        if (c_account<0) or (c_account>=FNode.Bank.AccountsCount) then begin
+        if (c_account<0) or (c_account>=PascalCoinNode.Bank.AccountsCount) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'Invalid account_target '+params.AsString('account_target','');
           Exit;
         end;
-        account_target := FNode.Operations.SafeBoxTransaction.Account(c_account);
+        account_target := PascalCoinNode.Operations.SafeBoxTransaction.Account(c_account);
         if (Not TAccountComp.EqualAccountKeys(account_signer.accountInfo.accountKey,account_target.accountInfo.accountKey)) then begin
           ErrorNum := CT_RPC_ErrNum_InvalidAccount;
           ErrorDesc := 'account_signer and account_target have distinct keys. Cannot sign';
@@ -2160,7 +2158,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         end;
         If not SignChangeAccountInfoEx(params,OperationsHashTree,account_signer.accountInfo.accountKey,account_signer.n_operation) then Exit;
         opt := OperationsHashTree.GetOperation(0);
-        If not FNode.AddOperation(Nil,opt,errors) then begin
+        If not PascalCoinNode.AddOperation(Nil,opt,errors) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := errors;
           Exit;
@@ -2171,7 +2169,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         OperationsHashTree.Free;
       end;
     finally
-      FNode.OperationSequenceLock.Release;
+      PascalCoinNode.OperationSequenceLock.Release;
     end;
   End;
 
@@ -2202,7 +2200,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     accountBalanceMax := ToPascalCoins(params.AsDouble('max_balance',-1));
     // Validate Parameters
     if accountName <> '' then begin
-      if not FNode.Bank.SafeBox.ValidAccountName(accountName, errors) then begin
+      if not PascalCoinNode.Bank.SafeBox.ValidAccountName(accountName, errors) then begin
         ErrorNum := CT_RPC_ErrNum_InvalidAccountName;
         ErrorDesc := errors;
         exit;
@@ -2220,16 +2218,16 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
 
     // Search by name
     if ((accountName <> '') AND (exactMatch=true)) then begin
-       accountNumber := FNode.Bank.SafeBox.FindAccountByName(accountName);
+       accountNumber := PascalCoinNode.Bank.SafeBox.FindAccountByName(accountName);
        if accountNumber >= 0 then begin
-          account := FNode.Operations.SafeBoxTransaction.Account(accountNumber);
+          account := PascalCoinNode.Operations.SafeBoxTransaction.Account(accountNumber);
           if (accountType = -1) OR (Integer(account.account_type) = accountType) then
              TPascalCoinJSONComp.FillAccountObject(account,output.GetAsObject(output.Count));
        end;
     end else begin
       // Search by type-forSale-balance
-      for i := start to FNode.Bank.AccountsCount - 1 do begin
-        account := FNode.Operations.SafeBoxTransaction.Account(i);
+      for i := start to PascalCoinNode.Bank.AccountsCount - 1 do begin
+        account := PascalCoinNode.Operations.SafeBoxTransaction.Account(i);
         if (accountType <> -1) AND (Integer(account.account_type) <> accountType) then
         begin
            Continue;
@@ -2280,7 +2278,7 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
       n_operation_min := params.AsCardinal('n_operation_min',0);
       n_operation_max := params.AsCardinal('n_operation_max',0);
       start_block := params.AsCardinal('start_block',0); // Optional: 0 = Search all
-      sor := FNode.FindNOperations(account,start_block,true,n_operation_min,n_operation_max,oprl);
+      sor := PascalCoinNode.FindNOperations(account,start_block,true,n_operation_min,n_operation_max,oprl);
       Case sor of
         found : Result := True;
         invalid_params : begin
@@ -2310,8 +2308,8 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
     Function Capture_Current_Account(const nAccount : Int64) : TAccount;
     Begin
       Result := CT_Account_NUL;
-      if (nAccount<0) Or (nAccount>=FNode.Bank.AccountsCount) then Exit;
-      Result := FNode.Operations.SafeBoxTransaction.Account( nAccount );
+      if (nAccount<0) Or (nAccount>=PascalCoinNode.Bank.AccountsCount) then Exit;
+      Result := PascalCoinNode.Operations.SafeBoxTransaction.Account( nAccount );
     end;
 
   var errors : AnsiString;
@@ -2603,9 +2601,9 @@ function TRPCProcess.ProcessMethod(const method: String; params: TPCJSONObject;
         mop.SignerAccounts(lSigners);
         for j:=0 to lSigners.Count-1 do begin
           nAccount := PtrInt(lSigners[j]);
-          if (nAccount>=0) And (nAccount<FNode.Bank.AccountsCount) then begin
+          if (nAccount>=0) And (nAccount<PascalCoinNode.Bank.AccountsCount) then begin
             // Try to
-            pubKey := FNode.Operations.SafeBoxTransaction.Account(nAccount).accountInfo.accountKey;
+            pubKey := PascalCoinNode.Operations.SafeBoxTransaction.Account(nAccount).accountInfo.accountKey;
             // Is mine?
             iKey := _RPCServer.FWalletKeys.IndexOfAccountKey(pubKey);
             if (iKey>=0) then begin
@@ -2687,8 +2685,8 @@ begin
     // Param "account" contains account number
     // Returns JSON Object with account information based on BlockChain + Pending operations
     c := params.GetAsVariant('account').AsCardinal(CT_MaxAccount);
-    if (c>=0) And (c<FNode.Bank.AccountsCount) then begin
-      account := FNode.Operations.SafeBoxTransaction.Account(c);
+    if (c>=0) And (c<PascalCoinNode.Bank.AccountsCount) then begin
+      account := PascalCoinNode.Operations.SafeBoxTransaction.Account(c);
       TPascalCoinJSONComp.FillAccountObject(account,GetResultObject);
       Result := True;
     end else begin
@@ -2717,7 +2715,7 @@ begin
       l := params.AsInteger('start',0);
       for j := 0 to ocl.Count - 1 do begin
         if (j>=l) then begin
-          account := FNode.Operations.SafeBoxTransaction.Account(ocl.Get(j));
+          account := PascalCoinNode.Operations.SafeBoxTransaction.Account(ocl.Get(j));
           TPascalCoinJSONComp.FillAccountObject(account,jsonarr.GetAsObject(jsonarr.Count));
         end;
         if (k>0) And ((j+1)>=(k+l)) then break;
@@ -2731,7 +2729,7 @@ begin
         ocl := _RPCServer.WalletKeys.AccountsKeyList.AccountKeyList[i];
         for j := 0 to ocl.Count - 1 do begin
           if (c>=l) then begin
-            account := FNode.Operations.SafeBoxTransaction.Account(ocl.Get(j));
+            account := PascalCoinNode.Operations.SafeBoxTransaction.Account(ocl.Get(j));
             TPascalCoinJSONComp.FillAccountObject(account,jsonarr.GetAsObject(jsonarr.Count));
           end;
           inc(c);
@@ -2783,7 +2781,7 @@ begin
       ocl := _RPCServer.WalletKeys.AccountsKeyList.AccountKeyList[i];
       account.balance := 0;
       for j := 0 to ocl.Count - 1 do begin
-        account.balance := account.balance + FNode.Operations.SafeBoxTransaction.Account(ocl.Get(j)).balance;
+        account.balance := account.balance + PascalCoinNode.Operations.SafeBoxTransaction.Account(ocl.Get(j)).balance;
       end;
       jsonresponse.GetAsVariant('result').value := ToJSONCurrency(account.balance);
       Result := true;
@@ -2794,7 +2792,7 @@ begin
       for i:=0 to _RPCServer.WalletKeys.AccountsKeyList.Count-1 do begin
         ocl := _RPCServer.WalletKeys.AccountsKeyList.AccountKeyList[i];
         for j := 0 to ocl.Count - 1 do begin
-          account.balance := account.balance + FNode.Operations.SafeBoxTransaction.Account(ocl.Get(j)).balance;
+          account.balance := account.balance + PascalCoinNode.Operations.SafeBoxTransaction.Account(ocl.Get(j)).balance;
         end;
       end;
       jsonresponse.GetAsVariant('result').value := ToJSONCurrency(account.balance);
@@ -2832,7 +2830,7 @@ begin
     // Param "block" contains block number (0..getblockcount-1)
     // Returns JSON object with block information
     c := params.GetAsVariant('block').AsCardinal(CT_MaxBlock);
-    if (c>=0) And (c<FNode.Bank.BlocksCount) then begin
+    if (c>=0) And (c<PascalCoinNode.Bank.BlocksCount) then begin
       Result := GetBlock(c,GetResultObject);
     end else begin
       ErrorNum := CT_RPC_ErrNum_InvalidBlock;
@@ -2846,20 +2844,20 @@ begin
     i := params.AsCardinal('last',0);
     if (i>0) then begin
       if (i>1000) then i := 1000;
-      c2 := FNode.Bank.BlocksCount-1;
-      if (FNode.Bank.BlocksCount>=i) then
-        c := (FNode.Bank.BlocksCount) - i
+      c2 := PascalCoinNode.Bank.BlocksCount-1;
+      if (PascalCoinNode.Bank.BlocksCount>=i) then
+        c := (PascalCoinNode.Bank.BlocksCount) - i
       else c := 0;
     end else begin
       c := params.GetAsVariant('start').AsCardinal(CT_MaxBlock);
       c2 := params.GetAsVariant('end').AsCardinal(CT_MaxBlock);
       i := params.AsInteger('max',0);
-      if (c<FNode.Bank.BlocksCount) And (i>0) And (i<=1000) then begin
-        if (c+i<FNode.Bank.BlocksCount) then c2 := c+i
-        else c2 := FNode.Bank.BlocksCount-1;
+      if (c<PascalCoinNode.Bank.BlocksCount) And (i>0) And (i<=1000) then begin
+        if (c+i<PascalCoinNode.Bank.BlocksCount) then c2 := c+i
+        else c2 := PascalCoinNode.Bank.BlocksCount-1;
       end;
     end;
-    if ((c>=0) And (c<FNode.Bank.BlocksCount)) And (c2>=c) And (c2<FNode.Bank.BlocksCount) then begin
+    if ((c>=0) And (c<PascalCoinNode.Bank.BlocksCount)) And (c2>=c) And (c2<PascalCoinNode.Bank.BlocksCount) then begin
       i := 0; Result := true;
       while (c<=c2) And (Result) And (i<1000) do begin
         Result := GetBlock(c2,jsonresponse.GetAsArray('result').GetAsObject(i));
@@ -2869,22 +2867,22 @@ begin
       ErrorNum := CT_RPC_ErrNum_InvalidBlock;
       if (c>c2) then ErrorDesc := 'Block start > block end'
       else if (c=CT_MaxBlock) Or (c2=CT_MaxBlock) then ErrorDesc:='Need param "last" or "start" and "end"/"max"'
-      else if (c2>=FNode.Bank.BlocksCount) then ErrorDesc := 'Block higher or equal to getblockccount: '+IntToStr(c2)
+      else if (c2>=PascalCoinNode.Bank.BlocksCount) then ErrorDesc := 'Block higher or equal to getblockccount: '+IntToStr(c2)
       else  ErrorDesc := 'Block not found: '+IntToStr(c);
     end;
   end else if (method='getblockcount') then begin
     // Returns a number with Node blocks count
-    jsonresponse.GetAsVariant('result').Value:=FNode.Bank.BlocksCount;
+    jsonresponse.GetAsVariant('result').Value:=PascalCoinNode.Bank.BlocksCount;
     Result := True;
   end else if (method='getblockoperation') then begin
     // Param "block" contains block. Null = Pending operation
     // Param "opblock" contains operation inside a block: (0..getblock.operations-1)
     // Returns a JSON object with operation values as "Operation resume format"
     c := params.GetAsVariant('block').AsCardinal(CT_MaxBlock);
-    if (c>=0) And (c<FNode.Bank.BlocksCount) then begin
+    if (c>=0) And (c<PascalCoinNode.Bank.BlocksCount) then begin
       pcops := TPCOperationsComp.Create(Nil);
       try
-        If Not FNode.Bank.LoadOperations(pcops,c) then begin
+        If Not PascalCoinNode.Bank.LoadOperations(pcops,c) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := 'Cannot load Block: '+IntToStr(c);
           Exit;
@@ -2914,10 +2912,10 @@ begin
     // Param "block" contains block
     // Returns a JSON array with items as "Operation resume format"
     c := params.GetAsVariant('block').AsCardinal(CT_MaxBlock);
-    if (c>=0) And (c<FNode.Bank.BlocksCount) then begin
+    if (c>=0) And (c<PascalCoinNode.Bank.BlocksCount) then begin
       pcops := TPCOperationsComp.Create(Nil);
       try
-        If Not FNode.Bank.LoadOperations(pcops,c) then begin
+        If Not PascalCoinNode.Bank.LoadOperations(pcops,c) then begin
           ErrorNum := CT_RPC_ErrNum_InternalError;
           ErrorDesc := 'Cannot load Block: '+IntToStr(c);
           Exit;
@@ -2952,7 +2950,7 @@ begin
     // Param "start" and "max" contains starting index and max operations respectively
     // Param "startblock" forces to start searching backwards on a fixed block, will not give balance for each operation due it's unknown
     c := params.GetAsVariant('account').AsCardinal(CT_MaxAccount);
-    if ((c>=0) And (c<FNode.Bank.AccountsCount)) then begin
+    if ((c>=0) And (c<PascalCoinNode.Bank.AccountsCount)) then begin
       if (params.IndexOfName('depth')>=0) then i := params.AsInteger('depth',100) else i:=params.AsInteger('deep',100);
       If params.IndexOfName('startblock')>=0 then c2 := params.AsCardinal('startblock',0)
       else c2 := 0;
@@ -2967,11 +2965,11 @@ begin
     // Create result
     k := params.AsInteger('max',100);
     j := params.AsInteger('start',0);
-    If FNode.TryLockNode(5000) then begin
+    If PascalCoinNode.TryLockNode(5000) then begin
       Try
         jsonarr := GetResultArray;
-        for i := j to FNode.Operations.Count-1 do begin
-          If TPCOperation.OperationToOperationResume(0,FNode.Operations.Operation[i],True,FNode.Operations.Operation[i].SignerAccount,opr) then begin
+        for i := j to PascalCoinNode.Operations.Count-1 do begin
+          If TPCOperation.OperationToOperationResume(0,PascalCoinNode.Operations.Operation[i],True,PascalCoinNode.Operations.Operation[i].SignerAccount,opr) then begin
             opr.NOpInsideBlock:=i;
             opr.time:=pcops.OperationBlock.timestamp;
             opr.Balance := -1; // Don't include!
@@ -2980,7 +2978,7 @@ begin
           if (k>0) And (jsonarr.Count>=k) then break;
         end;
       finally
-        FNode.UnlockNode;
+        PascalCoinNode.UnlockNode;
       end;
       Result := true;
     end else begin
@@ -2988,7 +2986,7 @@ begin
       ErrorDesc := 'Node is busy';
     end;
   end else if (method='getpendingscount') then begin
-    jsonresponse.GetAsVariant('result').Value := FNode.Operations.Count;
+    jsonresponse.GetAsVariant('result').Value := PascalCoinNode.Operations.Count;
     Result := true;
   end else if (method='decodeophash') then begin
     // Search for an operation based on "ophash"
@@ -3018,7 +3016,7 @@ begin
     end;
     pcops := TPCOperationsComp.Create(Nil);
     try
-      Case FNode.FindOperationExt(pcops,r1,c,i) of
+      Case PascalCoinNode.FindOperationExt(pcops,r1,c,i) of
         found : ;
         invalid_params : begin
             ErrorNum:=CT_RPC_ErrNum_NotFound;
@@ -3047,7 +3045,7 @@ begin
   end else if (method='findnoperation') then begin
     // Search for an operation signed by "account" and with "n_operation", start searching "block" (0=all)
     // "block" = 0 search in all blocks, pending operations included
-    Case FNode.FindNOperation(params.AsCardinal('block',0),params.AsCardinal('account',MaxInt),params.AsCardinal('n_operation',0),opr) of
+    Case PascalCoinNode.FindNOperation(params.AsCardinal('block',0),params.AsCardinal('account',MaxInt),params.AsCardinal('n_operation',0),opr) of
       found : ;
       invalid_params : begin
           ErrorNum:=CT_RPC_ErrNum_NotFound;
@@ -3251,7 +3249,7 @@ begin
   end else if (method='nodestatus') then begin
     // Returns a JSON Object with Node status
     GetResultObject.GetAsVariant('ready').Value := False;
-    If FNode.IsReady(ansistr) then begin
+    If PascalCoinNode.IsReady(ansistr) then begin
       GetResultObject.GetAsVariant('ready_s').Value := ansistr;
       if TNetData.NetData.NetStatistics.ActiveConnections>0 then begin
         GetResultObject.GetAsVariant('ready').Value := True;
@@ -3268,15 +3266,15 @@ begin
     end else begin
       GetResultObject.GetAsVariant('ready_s').Value := ansistr;
     end;
-    GetResultObject.GetAsVariant('port').Value:=FNode.NetServer.Port;
+    GetResultObject.GetAsVariant('port').Value:=PascalCoinNode.NetServer.Port;
     GetResultObject.GetAsVariant('locked').Value:=Not _RPCServer.WalletKeys.IsValidPassword;
     GetResultObject.GetAsVariant('timestamp').Value:=UnivDateTimeToUnix(DateTime2UnivDateTime(now));
     GetResultObject.GetAsVariant('version').Value:=CT_ClientAppVersion;
     GetResultObject.GetAsObject('netprotocol').GetAsVariant('ver').Value := CT_NetProtocol_Version;
     GetResultObject.GetAsObject('netprotocol').GetAsVariant('ver_a').Value := CT_NetProtocol_Available;
-    GetResultObject.GetAsVariant('blocks').Value:=FNode.Bank.BlocksCount;
-    GetResultObject.GetAsVariant('sbh').Value:=TCrypto.ToHexaString(FNode.Bank.LastOperationBlock.initial_safe_box_hash);
-    GetResultObject.GetAsVariant('pow').Value:=TCrypto.ToHexaString(FNode.Bank.LastOperationBlock.proof_of_work);
+    GetResultObject.GetAsVariant('blocks').Value:=PascalCoinNode.Bank.BlocksCount;
+    GetResultObject.GetAsVariant('sbh').Value:=TCrypto.ToHexaString(PascalCoinNode.Bank.LastOperationBlock.initial_safe_box_hash);
+    GetResultObject.GetAsVariant('pow').Value:=TCrypto.ToHexaString(PascalCoinNode.Bank.LastOperationBlock.proof_of_work);
     GetResultObject.GetAsObject('netstats').GetAsVariant('active').Value:=TNetData.NetData.NetStatistics.ActiveConnections;
     GetResultObject.GetAsObject('netstats').GetAsVariant('clients').Value:=TNetData.NetData.NetStatistics.ClientsConnections;
     GetResultObject.GetAsObject('netstats').GetAsVariant('servers').Value:=TNetData.NetData.NetStatistics.ServersConnectionsWithResponse;
@@ -3425,13 +3423,13 @@ begin
     Result := true;
   end else if (method='stopnode') then begin
     // Stops communications to other nodes
-    FNode.NetServer.Active := false;
+    PascalCoinNode.NetServer.Active := false;
     TNetData.NetData.NetConnectionsActive:=false;
     jsonresponse.GetAsVariant('result').Value := true;
     Result := true;
   end else if (method='startnode') then begin
     // Stops communications to other nodes
-    FNode.NetServer.Active := true;
+    PascalCoinNode.NetServer.Active := true;
     TNetData.NetData.NetConnectionsActive:=true;
     jsonresponse.GetAsVariant('result').Value := true;
     Result := true;

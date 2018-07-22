@@ -1024,7 +1024,7 @@ end;
 
 function TNetData.Bank: TPCBank;
 begin
-  Result := TNode.Node.Bank;
+  Result := PascalCoinNode.Bank;
 end;
 
 function TNetData.Connection(index: Integer): TNetConnection;
@@ -1542,7 +1542,7 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
     OperationBlock := CT_OperationBlock_NUL;
     BlocksList := TList.Create;
     try
-      Result := Do_GetOperationsBlock(TNode.Node.Bank,block,block,MaxWaitMilliseconds,True,BlocksList);
+      Result := Do_GetOperationsBlock(PascalCoinNode.Bank,block,block,MaxWaitMilliseconds,True,BlocksList);
       // Build 2.1.7 - Included protection agains not good block received
       if (Result) And (BlocksList.Count=1) then begin
         OperationBlock := TPCOperationsComp(BlocksList[0]).OperationBlock;
@@ -1592,7 +1592,7 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
 
           ant_nblock := auxBlock.block;
           //
-          sbBlock := TNode.Node.Bank.SafeBox.Block(auxBlock.block).blockchainInfo;
+          sbBlock := PascalCoinNode.Bank.SafeBox.Block(auxBlock.block).blockchainInfo;
           if TPCOperationsComp.EqualsOperationBlock(sbBlock,auxBlock) then begin
             distinctmin := auxBlock.block;
             OperationBlock := auxBlock;
@@ -1631,14 +1631,14 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
     TLog.NewLog(ltdebug,CT_LogSender,Format('GetNewBank(new_start_block:%d)',[start_block]));
     Bank := TPCBank.Create(Nil);
     try
-      Bank.StorageClass := TNode.Node.Bank.StorageClass;
-      Bank.Storage.Orphan := TNode.Node.Bank.Storage.Orphan;
+      Bank.StorageClass := PascalCoinNode.Bank.StorageClass;
+      Bank.Storage.Orphan := PascalCoinNode.Bank.Storage.Orphan;
       Bank.Storage.ReadOnly := true;
-      Bank.Storage.CopyConfiguration(TNode.Node.Bank.Storage);
+      Bank.Storage.CopyConfiguration(PascalCoinNode.Bank.Storage);
       if start_block>=0 then begin
-        If (TNode.Node.Bank.SafeBox.HasSnapshotForBlock(start_block-1)) then begin
+        If (PascalCoinNode.Bank.SafeBox.HasSnapshotForBlock(start_block-1)) then begin
           // Restore from a Snapshot (New on V3) instead of restore reading from File
-          Bank.SafeBox.SetToPrevious(TNode.Node.Bank.SafeBox,start_block-1);
+          Bank.SafeBox.SetToPrevious(PascalCoinNode.Bank.SafeBox,start_block-1);
           Bank.UpdateValuesFromSafebox;
           IsUsingSnapshot := True;
         end else begin
@@ -1700,25 +1700,25 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
         start := Bank.BlocksCount;
       until (Bank.BlocksCount=Connection.FRemoteOperationBlock.block+1) Or (finished)
         // Allow to do not download ALL new blockchain in a separate folder, only needed blocks!
-        Or (Bank.SafeBox.WorkSum > (TNode.Node.Bank.SafeBox.WorkSum + $FFFFFFFF) );
+        Or (Bank.SafeBox.WorkSum > (PascalCoinNode.Bank.SafeBox.WorkSum + $FFFFFFFF) );
       // New Build 1.5 more work vs more high
       // work = SUM(target) of all previous blocks (Int64)
       // -----------------------------
-      // Before of version 1.5 was: "if Bank.BlocksCount>TNode.Node.Bank.BlocksCount then ..."
+      // Before of version 1.5 was: "if Bank.BlocksCount>PascalCoinNode.Bank.BlocksCount then ..."
       // Starting on version 1.5 is: "if Bank.WORK > MyBank.WORK then ..."
-      if Bank.SafeBox.WorkSum > TNode.Node.Bank.SafeBox.WorkSum then begin
+      if Bank.SafeBox.WorkSum > PascalCoinNode.Bank.SafeBox.WorkSum then begin
         oldBlockchainOperations := TOperationsHashTree.Create;
         try
-          TNode.Node.DisableNewBlocks;
+          PascalCoinNode.DisableNewBlocks;
           Try
             // I'm an orphan blockchain...
-            TLog.NewLog(ltinfo,CT_LogSender,'New valid blockchain found. My block count='+inttostr(TNode.Node.Bank.BlocksCount)+' work: '+IntToStr(TNode.Node.Bank.SafeBox.WorkSum)+
+            TLog.NewLog(ltinfo,CT_LogSender,'New valid blockchain found. My block count='+inttostr(PascalCoinNode.Bank.BlocksCount)+' work: '+IntToStr(PascalCoinNode.Bank.SafeBox.WorkSum)+
               ' found count='+inttostr(Bank.BlocksCount)+' work: '+IntToStr(Bank.SafeBox.WorkSum)+' starting at block '+inttostr(start_block));
-            if TNode.Node.Bank.BlocksCount>0 then begin
+            if PascalCoinNode.Bank.BlocksCount>0 then begin
               OpExecute := TPCOperationsComp.Create(Nil);
               try
-                for start:=start_c to TNode.Node.Bank.BlocksCount-1 do begin
-                  If TNode.Node.Bank.LoadOperations(OpExecute,start) then begin
+                for start:=start_c to PascalCoinNode.Bank.BlocksCount-1 do begin
+                  If PascalCoinNode.Bank.LoadOperations(OpExecute,start) then begin
                     if (OpExecute.Count>0) then begin
                       for i:=0 to OpExecute.Count-1 do begin
                         // TODO: NEED TO EXCLUDE OPERATIONS ALREADY INCLUDED IN BLOCKCHAIN?
@@ -1734,8 +1734,8 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
                 OpExecute.Free;
               end;
             end;
-            TNode.Node.Bank.Storage.MoveBlockChainBlocks(start_block,Inttostr(start_block)+'_'+FormatDateTime('yyyymmddhhnnss',DateTime2UnivDateTime(now)),Nil);
-            Bank.Storage.MoveBlockChainBlocks(start_block,TNode.Node.Bank.Storage.Orphan,TNode.Node.Bank.Storage);
+            PascalCoinNode.Bank.Storage.MoveBlockChainBlocks(start_block,Inttostr(start_block)+'_'+FormatDateTime('yyyymmddhhnnss',DateTime2UnivDateTime(now)),Nil);
+            Bank.Storage.MoveBlockChainBlocks(start_block,PascalCoinNode.Bank.Storage.Orphan,PascalCoinNode.Bank.Storage);
             //
             If IsUsingSnapshot then begin
               TLog.NewLog(ltInfo,CT_LogSender,'Commiting new chain to Safebox');
@@ -1750,33 +1750,33 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
               {$ENDIF}
             end else begin
               TLog.NewLog(ltInfo,CT_LogSender,'Restoring modified Safebox from Disk');
-              TNode.Node.Bank.DiskRestoreFromOperations(CT_MaxBlock);
+              PascalCoinNode.Bank.DiskRestoreFromOperations(CT_MaxBlock);
             end;
           Finally
-            TNode.Node.EnableNewBlocks;
+            PascalCoinNode.EnableNewBlocks;
           End;
-          TNode.Node.NotifyBlocksChanged;
+          PascalCoinNode.NotifyBlocksChanged;
           // Finally add new operations:
           // Rescue old operations from old blockchain to new blockchain
           If oldBlockchainOperations.OperationsCount>0 then begin
             TLog.NewLog(ltInfo,CT_LogSender,Format('Executing %d operations from block %d to %d',
-             [oldBlockchainOperations.OperationsCount,start_c,TNode.Node.Bank.BlocksCount-1]));
+             [oldBlockchainOperations.OperationsCount,start_c,PascalCoinNode.Bank.BlocksCount-1]));
             opsResume := TOperationsResumeList.Create;
             Try
               // Re-add orphaned operations back into the pending pool.
               // NIL is passed as senderConnection since localnode is considered
               // the origin, and current sender needs these operations.
-              i := TNode.Node.AddOperations(NIL,oldBlockchainOperations,opsResume,errors);
+              i := PascalCoinNode.AddOperations(NIL,oldBlockchainOperations,opsResume,errors);
               TLog.NewLog(ltInfo,CT_LogSender,Format('Executed %d/%d operations. Returned errors: %s',[i,oldBlockchainOperations.OperationsCount,errors]));
             finally
               opsResume.Free;
             end;
-          end else TLog.NewLog(ltInfo,CT_LogSender,Format('No operations from block %d to %d',[start_c,TNode.Node.Bank.BlocksCount-1]));
+          end else TLog.NewLog(ltInfo,CT_LogSender,Format('No operations from block %d to %d',[start_c,PascalCoinNode.Bank.BlocksCount-1]));
         finally
           oldBlockchainOperations.Free;
         end;
       end else begin
-        if (Not IsAScam) And (Connection.FRemoteAccumulatedWork > TNode.Node.Bank.SafeBox.WorkSum) then begin
+        if (Not IsAScam) And (Connection.FRemoteAccumulatedWork > PascalCoinNode.Bank.SafeBox.WorkSum) then begin
           // Possible scammer!
           Connection.DisconnectInvalidClient(false,Format('Possible scammer! Says blocks:%d Work:%d - Obtained blocks:%d work:%d',
             [Connection.FRemoteOperationBlock.block+1,Connection.FRemoteAccumulatedWork,
@@ -1906,28 +1906,28 @@ Const CT_LogSender = 'GetNewBlockChainFromClient';
         SetLength(chunks,0);
       end;
       // Now receiveData is the ALL safebox
-      TNode.Node.DisableNewBlocks;
+      PascalCoinNode.DisableNewBlocks;
       try
-        TNode.Node.Bank.SafeBox.StartThreadSafe;
+        PascalCoinNode.Bank.SafeBox.StartThreadSafe;
         try
           receiveData.Position:=0;
-          If TNode.Node.Bank.LoadBankFromStream(receiveData,True,errors) then begin
+          If PascalCoinNode.Bank.LoadBankFromStream(receiveData,True,errors) then begin
             TLog.NewLog(ltInfo,ClassName,'Received new safebox!');
             If Not IsMyBlockchainValid then begin
-              TNode.Node.Bank.Storage.EraseStorage;
+              PascalCoinNode.Bank.Storage.EraseStorage;
             end;
-            TNode.Node.Bank.Storage.SaveBank;
-            Connection.Send_GetBlocks(TNode.Node.Bank.BlocksCount,100,request_id);
+            PascalCoinNode.Bank.Storage.SaveBank;
+            Connection.Send_GetBlocks(PascalCoinNode.Bank.BlocksCount,100,request_id);
             Result := true;
           end else begin
             Connection.DisconnectInvalidClient(false,'Cannot load from stream! '+errors);
             exit;
           end;
         finally
-          TNode.Node.Bank.SafeBox.EndThreadSave;
+          PascalCoinNode.Bank.SafeBox.EndThreadSave;
         end;
       finally
-        TNode.Node.EnableNewBlocks;
+        PascalCoinNode.EnableNewBlocks;
       end;
     finally
       receiveData.Free;
@@ -1943,7 +1943,7 @@ begin
     TLog.NewLog(ltdebug,CT_LogSender,'Is discovering servers...');
     exit;
   end;
-  if (Not Assigned(TNode.Node.Bank.StorageClass)) then Exit;
+  if (Not Assigned(PascalCoinNode.Bank.StorageClass)) then Exit;
   //
   If FIsGettingNewBlockChainFromClient then begin
     TLog.NewLog(ltdebug,CT_LogSender,'Is getting new blockchain from client...');
@@ -1952,7 +1952,7 @@ begin
   Try
     FIsGettingNewBlockChainFromClient := true;
     FMaxRemoteOperationBlock := Connection.FRemoteOperationBlock;
-    if TNode.Node.Bank.BlocksCount=0 then begin
+    if PascalCoinNode.Bank.BlocksCount=0 then begin
       TLog.NewLog(ltdebug,CT_LogSender,'I have no blocks');
       If Connection.FRemoteOperationBlock.protocol_version>=CT_PROTOCOL_2 then begin
         DownloadSafeBox(False);
@@ -1962,10 +1962,10 @@ begin
       exit;
     end;
     TLog.NewLog(ltdebug,CT_LogSender,'Starting GetNewBlockChainFromClient at client:'+Connection.ClientRemoteAddr+
-      ' with OperationBlock:'+TPCOperationsComp.OperationBlockToText(Connection.FRemoteOperationBlock)+' (My block: '+TPCOperationsComp.OperationBlockToText(TNode.Node.Bank.LastOperationBlock)+')');
-    // NOTE: FRemoteOperationBlock.block >= TNode.Node.Bank.BlocksCount
-    // First capture same block than me (TNode.Node.Bank.BlocksCount-1) to check if i'm an orphan block...
-    my_op := TNode.Node.Bank.LastOperationBlock;
+      ' with OperationBlock:'+TPCOperationsComp.OperationBlockToText(Connection.FRemoteOperationBlock)+' (My block: '+TPCOperationsComp.OperationBlockToText(PascalCoinNode.Bank.LastOperationBlock)+')');
+    // NOTE: FRemoteOperationBlock.block >= PascalCoinNode.Bank.BlocksCount
+    // First capture same block than me (PascalCoinNode.Bank.BlocksCount-1) to check if i'm an orphan block...
+    my_op := PascalCoinNode.Bank.LastOperationBlock;
     If Not Do_GetOperationBlock(my_op.block,5000,client_op) then begin
       TLog.NewLog(lterror,CT_LogSender,'Cannot receive information about my block ('+inttostr(my_op.block)+')...');
       // Disabled at Build 1.0.6 >  Connection.DisconnectInvalidClient(false,'Cannot receive information about my block ('+inttostr(my_op.block)+')... Invalid client. Disconnecting');
@@ -1988,11 +1988,11 @@ begin
         end;
       end else begin
         // Move operations to orphan folder... (temporal... waiting for a confirmation)
-        if (TNode.Node.Bank.Storage.FirstBlock<client_op.block) then begin
+        if (PascalCoinNode.Bank.Storage.FirstBlock<client_op.block) then begin
           TLog.NewLog(ltinfo,CT_LogSender,'Found base new block: '+TPCOperationsComp.OperationBlockToText(client_op));
           GetNewBank(client_op.block+1);
         end else begin
-          TLog.NewLog(ltinfo,CT_LogSender,'Found base new block: '+TPCOperationsComp.OperationBlockToText(client_op)+' lower than saved:'+IntToStr(TNode.Node.Bank.Storage.FirstBlock));
+          TLog.NewLog(ltinfo,CT_LogSender,'Found base new block: '+TPCOperationsComp.OperationBlockToText(client_op)+' lower than saved:'+IntToStr(PascalCoinNode.Bank.Storage.FirstBlock));
           DownloadSafeBox(False);
         end;
       end;
@@ -2301,7 +2301,7 @@ begin
   end;
   inherited;
   if Active then begin
-    // TNode.Node.AutoDiscoverNodes(CT_Discover_IPs);
+    // PascalCoinNode.AutoDiscoverNodes(CT_Discover_IPs);
   end else if TNetData.NetDataExists then begin
     TNetData.NetData.DisconnectClients;
   end;
@@ -2567,7 +2567,7 @@ begin
         Finally
           FBufferLock.Release;
         End;
-        TNode.Node.AddOperations(Self,operations,Nil,errors);
+        PascalCoinNode.AddOperations(Self,operations,Nil,errors);
       end;
     finally
       operations.Free;
@@ -2682,7 +2682,7 @@ begin
     errors := 'Invalid structure';
     op := TPCOperationsComp.Create(nil);
     Try
-      op.bank := TNode.Node.Bank;
+      op.bank := PascalCoinNode.Bank;
       if DataBuffer.Size-DataBuffer.Position<4 then begin
         DisconnectInvalidClient(false,'DoProcess_GetBlocks_Response invalid format: '+errors);
         exit;
@@ -2695,31 +2695,31 @@ begin
            DoDisconnect := true;
            exit;
         end;
-        if (op.OperationBlock.block=TNode.Node.Bank.BlocksCount) then begin
-          if (TNode.Node.Bank.AddNewBlockChainBlock(op,TNetData.NetData.NetworkAdjustedTime.GetMaxAllowedTimestampForNewBlock, newBlockAccount,errors)) then begin
+        if (op.OperationBlock.block=PascalCoinNode.Bank.BlocksCount) then begin
+          if (PascalCoinNode.Bank.AddNewBlockChainBlock(op,TNetData.NetData.NetworkAdjustedTime.GetMaxAllowedTimestampForNewBlock, newBlockAccount,errors)) then begin
             // Ok, one more!
           end else begin
             // Is not a valid entry????
             // Perhaps an orphan blockchain: Me or Client!
             TLog.NewLog(ltinfo,Classname,'Distinct operation block found! My:'+
-                TPCOperationsComp.OperationBlockToText(TNode.Node.Bank.SafeBox.Block(TNode.Node.Bank.BlocksCount-1).blockchainInfo)+
+                TPCOperationsComp.OperationBlockToText(PascalCoinNode.Bank.SafeBox.Block(PascalCoinNode.Bank.BlocksCount-1).blockchainInfo)+
                 ' remote:'+TPCOperationsComp.OperationBlockToText(op.OperationBlock)+' Errors: '+errors);
           end;
         end else begin
           // Receiving an unexpected operationblock
-          TLog.NewLog(lterror,classname,'Received a distinct block, finalizing: '+TPCOperationsComp.OperationBlockToText(op.OperationBlock)+' (My block: '+TPCOperationsComp.OperationBlockToText(TNode.Node.Bank.LastOperationBlock)+')' );
+          TLog.NewLog(lterror,classname,'Received a distinct block, finalizing: '+TPCOperationsComp.OperationBlockToText(op.OperationBlock)+' (My block: '+TPCOperationsComp.OperationBlockToText(PascalCoinNode.Bank.LastOperationBlock)+')' );
           FIsDownloadingBlocks := false;
           exit;
         end;
       end;
       FIsDownloadingBlocks := false;
-      if ((opcount>0) And (FRemoteOperationBlock.block>=TNode.Node.Bank.BlocksCount)) then begin
-        Send_GetBlocks(TNode.Node.Bank.BlocksCount,100,i);
+      if ((opcount>0) And (FRemoteOperationBlock.block>=PascalCoinNode.Bank.BlocksCount)) then begin
+        Send_GetBlocks(PascalCoinNode.Bank.BlocksCount,100,i);
       end else begin
         // No more blocks to download, download Pending operations
         DoProcess_GetPendingOperations;
       end;
-      TNode.Node.NotifyBlocksChanged;
+      PascalCoinNode.NotifyBlocksChanged;
     Finally
       op.Free;
     End;
@@ -2751,21 +2751,21 @@ begin
     end;
     DataBuffer.Read(b_start,4);
     DataBuffer.Read(b_end,4);
-    if (b_start<0) Or (b_start>b_end) Or (b_start>=TNode.Node.Bank.BlocksCount) then begin
-      errors := 'Invalid start ('+Inttostr(b_start)+') or end ('+Inttostr(b_end)+') of count ('+Inttostr(TNode.Node.Bank.BlocksCount)+')';
+    if (b_start<0) Or (b_start>b_end) Or (b_start>=PascalCoinNode.Bank.BlocksCount) then begin
+      errors := 'Invalid start ('+Inttostr(b_start)+') or end ('+Inttostr(b_end)+') of count ('+Inttostr(PascalCoinNode.Bank.BlocksCount)+')';
       exit;
     end;
 
     DoDisconnect := false;
 
-    if (b_end>=TNode.Node.Bank.BlocksCount) then b_end := TNode.Node.Bank.BlocksCount-1;
+    if (b_end>=PascalCoinNode.Bank.BlocksCount) then b_end := PascalCoinNode.Bank.BlocksCount-1;
     inc_b := ((b_end - b_start) DIV CT_Max_Positions)+1;
     msops := TMemoryStream.Create;
     try
       b := b_start;
       total_b := 0;
       repeat
-        ob := TNode.Node.Bank.SafeBox.Block(b).blockchainInfo;
+        ob := PascalCoinNode.Bank.SafeBox.Block(b).blockchainInfo;
         If TPCOperationsComp.SaveOperationBlockToStream(ob,msops) then begin
           blocksstr := blocksstr + inttostr(b)+',';
           b := b + inc_b;
@@ -2822,7 +2822,7 @@ begin
   DataBuffer.Read(_from,SizeOf(_from));
   DataBuffer.Read(_to,SizeOf(_to));
   //
-  sbStream := TNode.Node.Bank.Storage.CreateSafeBoxStream(_blockcount);
+  sbStream := PascalCoinNode.Bank.Storage.CreateSafeBoxStream(_blockcount);
   try
     responseStream := TMemoryStream.Create;
     try
@@ -2884,7 +2884,7 @@ begin
     DataBuffer.Read(b,1);
     if (b=1) then begin
       // Return count
-      c := TNode.Node.Operations.Count;
+      c := PascalCoinNode.Operations.Count;
       responseStream.Write(c,SizeOf(c));
     end else if (b=2) then begin
       // Return from start to start+max
@@ -2899,17 +2899,17 @@ begin
       end;
       opht := TOperationsHashTree.Create;
       Try
-        TNode.Node.Operations.Lock;
+        PascalCoinNode.Operations.Lock;
         Try
-          if (start >= TNode.Node.Operations.Count) Or (max=0) then begin
+          if (start >= PascalCoinNode.Operations.Count) Or (max=0) then begin
           end else begin
-            if (start + max >= TNode.Node.Operations.Count) then max := TNode.Node.Operations.Count - start;
+            if (start + max >= PascalCoinNode.Operations.Count) then max := PascalCoinNode.Operations.Count - start;
             for i:=start to (start + max -1) do begin
-              opht.AddOperationToHashTree(TNode.Node.Operations.OperationsHashTree.GetOperation(i));
+              opht.AddOperationToHashTree(PascalCoinNode.Operations.OperationsHashTree.GetOperation(i));
             end;
           end;
         finally
-          TNode.Node.Operations.Unlock;
+          PascalCoinNode.Operations.Unlock;
         end;
         opht.SaveOperationsHashTreeToStream(responseStream,False);
       Finally
@@ -2989,7 +2989,7 @@ begin
         end;
         If (opht.OperationsCount>0) then begin
           inc(cReceived,opht.OperationsCount);
-          i := TNode.Node.AddOperations(Self,opht,Nil,errors);
+          i := PascalCoinNode.AddOperations(Self,opht,Nil,errors);
           inc(cAddedOperations,i);
         end else Break; // No more
         inc(cStart,opht.OperationsCount);
@@ -3042,7 +3042,7 @@ begin
   responseStream := TMemoryStream.Create;
   try
     // Response first 4 bytes are current block number
-    c := TNode.Node.Bank.BlocksCount-1;
+    c := PascalCoinNode.Bank.BlocksCount-1;
     responseStream.Write(c,SizeOf(c));
     //
     if HeaderData.header_type<>ntp_request then begin
@@ -3070,15 +3070,15 @@ begin
         errors := 'Invalid start/max value';
         Exit;
       end;
-      if (start >= TNode.Node.Bank.AccountsCount) Or (max=0) then begin
+      if (start >= PascalCoinNode.Bank.AccountsCount) Or (max=0) then begin
         c := 0;
         responseStream.Write(c,SizeOf(c));
       end else begin
-        if (start + max >= TNode.Node.Bank.AccountsCount) then max := TNode.Node.Bank.AccountsCount - start;
+        if (start + max >= PascalCoinNode.Bank.AccountsCount) then max := PascalCoinNode.Bank.AccountsCount - start;
         c := max;
         responseStream.Write(c,SizeOf(c));
         for i:=start to (start + max -1) do begin
-          acc := TNode.Node.Operations.SafeBoxTransaction.Account(i);
+          acc := PascalCoinNode.Operations.SafeBoxTransaction.Account(i);
           TAccountComp.SaveAccountToAStream(responseStream,acc);
         end;
       end;
@@ -3089,8 +3089,8 @@ begin
       max := c;
       for i:=1 to max do begin
         DataBuffer.Read(c,SizeOf(c));
-        if (c>=0) And (c<TNode.Node.Bank.AccountsCount) then begin
-          acc := TNode.Node.Operations.SafeBoxTransaction.Account(c);
+        if (c>=0) And (c<PascalCoinNode.Bank.AccountsCount) then begin
+          acc := PascalCoinNode.Operations.SafeBoxTransaction.Account(c);
           TAccountComp.SaveAccountToAStream(responseStream,acc);
         end else begin
           errors := 'Invalid account number '+Inttostr(c);
@@ -3153,7 +3153,7 @@ Begin
       FClientTimestampIp := FTcpIpClient.RemoteHost;
       TNetData.NetData.NetworkAdjustedTime.AddNewIp(FClientTimestampIp,connection_ts);
       if (Abs(TNetData.NetData.NetworkAdjustedTime.TimeOffset)>CT_MaxFutureBlockTimestampOffset) then begin
-        TNode.Node.NotifyNetClientMessage(Nil,'The detected network time is different from this system time in '+
+        PascalCoinNode.NotifyNetClientMessage(Nil,'The detected network time is different from this system time in '+
           IntToStr(TNetData.NetData.NetworkAdjustedTime.TimeOffset)+' seconds! Please check your local time/timezone');
       end;
       if (Abs(FTimestampDiff) > CT_MaxFutureBlockTimestampOffset) then begin
@@ -3199,7 +3199,7 @@ Begin
           end;
         end;
         //
-        if (FRemoteAccumulatedWork>TNode.Node.Bank.SafeBox.WorkSum) Or
+        if (FRemoteAccumulatedWork>PascalCoinNode.Bank.SafeBox.WorkSum) Or
           ((FRemoteAccumulatedWork=0) And (TNetData.NetData.FMaxRemoteOperationBlock.block<FRemoteOperationBlock.block)) then begin
           TNetData.NetData.FMaxRemoteOperationBlock := FRemoteOperationBlock;
           if TPCThread.ThreadClassFound(TThreadGetNewBlockChainFromClient,nil)<0 then begin
@@ -3274,7 +3274,7 @@ begin
     else
       TLog.NewLog(ltinfo,Classname,'Received new message from '+ClientRemoteAddr+' Message ('+inttostr(length(decrypted))+' bytes) in hexadecimal: '+TCrypto.ToHexaString(decrypted));
     Try
-      TNode.Node.NotifyNetClientMessage(Self,decrypted);
+      PascalCoinNode.NotifyNetClientMessage(Self,decrypted);
     Except
       On E:Exception do begin
         TLog.NewLog(lterror,Classname,'Error processing received message. '+E.ClassName+' '+E.Message);
@@ -3302,7 +3302,7 @@ begin
     end;
     op := TPCOperationsComp.Create(nil);
     try
-      op.bank := TNode.Node.Bank;
+      op.bank := PascalCoinNode.Bank;
       if Not op.LoadBlockFromStream(DataBuffer,errors) then begin
         errors := 'Error decoding new account: '+errors;
         exit;
@@ -3316,29 +3316,29 @@ begin
         //
         if FRemoteAccumulatedWork=0 then begin
           // Old version. No data
-          if (op.OperationBlock.block>TNode.Node.Bank.BlocksCount) then begin
-            TNetData.NetData.GetNewBlockChainFromClient(Self,Format('BlocksCount:%d > my BlocksCount:%d',[op.OperationBlock.block+1,TNode.Node.Bank.BlocksCount]));
-          end else if (op.OperationBlock.block=TNode.Node.Bank.BlocksCount) then begin
+          if (op.OperationBlock.block>PascalCoinNode.Bank.BlocksCount) then begin
+            TNetData.NetData.GetNewBlockChainFromClient(Self,Format('BlocksCount:%d > my BlocksCount:%d',[op.OperationBlock.block+1,PascalCoinNode.Bank.BlocksCount]));
+          end else if (op.OperationBlock.block=PascalCoinNode.Bank.BlocksCount) then begin
             // New block candidate:
-            If Not TNode.Node.AddNewBlockChain(Self,op,bacc,errors) then begin
+            If Not PascalCoinNode.AddNewBlockChain(Self,op,bacc,errors) then begin
               // Received a new invalid block... perhaps I'm an orphan blockchain
               TNetData.NetData.GetNewBlockChainFromClient(Self,'Has a distinct block. '+errors);
             end;
           end;
         end else begin
-          if (FRemoteAccumulatedWork>TNode.Node.Bank.SafeBox.WorkSum) then begin
-            if (op.OperationBlock.block=TNode.Node.Bank.BlocksCount) then begin
+          if (FRemoteAccumulatedWork>PascalCoinNode.Bank.SafeBox.WorkSum) then begin
+            if (op.OperationBlock.block=PascalCoinNode.Bank.BlocksCount) then begin
               // New block candidate:
-              If Not TNode.Node.AddNewBlockChain(Self,op,bacc,errors) then begin
+              If Not PascalCoinNode.AddNewBlockChain(Self,op,bacc,errors) then begin
                 // Really is a new block? (Check it)
-                if (op.OperationBlock.block=TNode.Node.Bank.BlocksCount) then begin
+                if (op.OperationBlock.block=PascalCoinNode.Bank.BlocksCount) then begin
                   // Received a new invalid block... perhaps I'm an orphan blockchain
                   TNetData.NetData.GetNewBlockChainFromClient(Self,'Higher Work with same block height. I''m a orphan blockchain candidate');
                 end;
               end;
             end else begin
               // Received a new higher work
-              TNetData.NetData.GetNewBlockChainFromClient(Self,Format('Higher Work and distinct blocks count. Need to download BlocksCount:%d  my BlocksCount:%d',[op.OperationBlock.block+1,TNode.Node.Bank.BlocksCount]));
+              TNetData.NetData.GetNewBlockChainFromClient(Self,Format('Higher Work and distinct blocks count. Need to download BlocksCount:%d  my BlocksCount:%d',[op.OperationBlock.block+1,PascalCoinNode.Bank.BlocksCount]));
             end;
           end;
         end;
@@ -3538,7 +3538,7 @@ begin
         FNetProtocolVersion := HeaderData.protocol;
         // Build 1.0.4 accepts net protocol 1 and 2
         if HeaderData.protocol.protocol_version>CT_NetProtocol_Available then begin
-          TNode.Node.NotifyNetClientMessage(Nil,'Detected a higher Net protocol version at '+
+          PascalCoinNode.NotifyNetClientMessage(Nil,'Detected a higher Net protocol version at '+
             ClientRemoteAddr+' (v '+inttostr(HeaderData.protocol.protocol_version)+' '+inttostr(HeaderData.protocol.protocol_available)+') '+
             '... check that your version is Ok! Visit official download website for possible updates: https://sourceforge.net/projects/pascalcoin/');
           DisconnectInvalidClient(false,Format('Invalid Net protocol version found: %d available: %d',[HeaderData.protocol.protocol_version,HeaderData.protocol.protocol_available]));
@@ -3547,7 +3547,7 @@ begin
         end else begin
           if (FNetProtocolVersion.protocol_available>CT_NetProtocol_Available) And (Not FAlertedForNewProtocolAvailable) then begin
             FAlertedForNewProtocolAvailable := true;
-            TNode.Node.NotifyNetClientMessage(Nil,'Detected a new Net protocol version at '+
+            PascalCoinNode.NotifyNetClientMessage(Nil,'Detected a new Net protocol version at '+
               ClientRemoteAddr+' (v '+inttostr(HeaderData.protocol.protocol_version)+' '+inttostr(HeaderData.protocol.protocol_available)+') '+
               '... Visit official download website for possible updates: https://sourceforge.net/projects/pascalcoin/');
           end;
@@ -3822,8 +3822,8 @@ begin
     if NetTranferType=ntp_request then begin
       TNetData.NetData.RegisterRequest(Self,CT_NetOp_Hello,request_id);
     end;
-    If TNode.Node.NetServer.Active then
-      w := TNode.Node.NetServer.Port
+    If PascalCoinNode.NetServer.Active then
+      w := PascalCoinNode.NetServer.Port
     else w := 0;
     // Save active server port (2 bytes). 0 = No active server port
     data.Write(w,2);
@@ -3833,7 +3833,7 @@ begin
     currunixtimestamp := UnivDateTimeToUnix(DateTime2UnivDateTime(now));
     data.Write(currunixtimestamp,4);
     // Save last operations block
-    TPCOperationsComp.SaveOperationBlockToStream(TNode.Node.Bank.LastOperationBlock,data);
+    TPCOperationsComp.SaveOperationBlockToStream(PascalCoinNode.Bank.LastOperationBlock,data);
     nsarr := TNetData.NetData.NodeServersAddresses.GetValidNodeServers(true,CT_MAX_NODESERVERS_ON_HELLO);
     i := length(nsarr);
     data.Write(i,4);
@@ -3846,7 +3846,7 @@ begin
     // Send client version
     TStreamOp.WriteAnsiString(data,CT_ClientAppVersion{$IFDEF LINUX}+'l'{$ELSE}+'w'{$ENDIF}{$IFDEF FPC}{$IFDEF LCL}+'L'{$ELSE}+'F'{$ENDIF}{$ENDIF});
     // Build 1.5 send accumulated work
-    data.Write(TNode.Node.Bank.SafeBox.WorkSum,SizeOf(TNode.Node.Bank.SafeBox.WorkSum));
+    data.Write(PascalCoinNode.Bank.SafeBox.WorkSum,SizeOf(PascalCoinNode.Bank.SafeBox.WorkSum));
     //
     Send(NetTranferType,CT_NetOp_Hello,0,request_id,data);
     Result := Client.Connected;
@@ -3895,15 +3895,15 @@ begin
       TLog.NewLog(ltDebug,ClassName,'This connection has the same block, does not need to send');
       exit;
     end;
-    if (TNode.Node.Bank.BlocksCount<>NewBlock.OperationBlock.block+1) then begin
-      TLog.NewLog(ltDebug,ClassName,'The block number '+IntToStr(NewBlock.OperationBlock.block)+' is not equal to current blocks stored in bank ('+IntToStr(TNode.Node.Bank.BlocksCount)+'), finalizing');
+    if (PascalCoinNode.Bank.BlocksCount<>NewBlock.OperationBlock.block+1) then begin
+      TLog.NewLog(ltDebug,ClassName,'The block number '+IntToStr(NewBlock.OperationBlock.block)+' is not equal to current blocks stored in bank ('+IntToStr(PascalCoinNode.Bank.BlocksCount)+'), finalizing');
       exit;
     end;
     data := TMemoryStream.Create;
     try
       request_id := TNetData.NetData.NewRequestId;
       NewBlock.SaveBlockToStream(false,data);
-      data.Write(TNode.Node.Bank.SafeBox.WorkSum,SizeOf(TNode.Node.Bank.SafeBox.WorkSum));
+      data.Write(PascalCoinNode.Bank.SafeBox.WorkSum,SizeOf(PascalCoinNode.Bank.SafeBox.WorkSum));
       Send(ntp_autosend,CT_NetOp_NewBlock,0,request_id,data);
     finally
       data.Free;
@@ -4176,7 +4176,7 @@ begin
     nc := Nil;
     for i := 0 to j - 1 do begin
       if TNetData.NetData.GetConnection(i,nc) then begin
-        if (nc.FRemoteAccumulatedWork>maxWork) And (nc.FRemoteAccumulatedWork>TNode.Node.Bank.SafeBox.WorkSum) then begin
+        if (nc.FRemoteAccumulatedWork>maxWork) And (nc.FRemoteAccumulatedWork>PascalCoinNode.Bank.SafeBox.WorkSum) then begin
           maxWork := nc.FRemoteAccumulatedWork;
         end;
         // Preventing downloading
@@ -4197,7 +4197,7 @@ begin
     if candidates.Count=0 then begin
       for i := 0 to j - 1 do begin
         if (TNetData.NetData.GetConnection(i,nc)) then begin
-          if (nc.FRemoteOperationBlock.block>=TNode.Node.Bank.BlocksCount) And
+          if (nc.FRemoteOperationBlock.block>=PascalCoinNode.Bank.BlocksCount) And
              (nc.FRemoteOperationBlock.block>=lop.block) then begin
              lop := nc.FRemoteOperationBlock;
           end;

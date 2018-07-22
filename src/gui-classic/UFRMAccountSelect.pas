@@ -105,7 +105,6 @@ type
     FDefaultAccount: Int64;
     FFilters: Integer;
     FWalletKeys: TWalletKeys;
-    FNode: TNode;
     FSafeBox : TPCSafeBox;
     FAccountsGrid : TAccountsGrid;
     FSearchThread : TSearchThread;
@@ -124,7 +123,6 @@ type
   public
     { Public declarations }
     Property WalletKeys : TWalletKeys read FWalletKeys write SetWalletKeys;
-    Property Node : TNode read FNode write SetNode;
     Property Filters : Integer read FFilters write SetFilters;
     Property DefaultAccount : Int64 read FDefaultAccount write SetDefaultAccount;
     Function GetSelected : Int64;
@@ -265,7 +263,6 @@ begin
   FSearchThread.OnSearchFinished := OnSearchFinished;
   FAccounts := TOrderedAccountList.Create;
   FWalletKeys := Nil;
-  FNode := Nil;
   FSafeBox:=Nil;
   FFilters:=0;
   FDefaultAccount:=-1;
@@ -436,8 +433,7 @@ end;
 
 procedure TFRMAccountSelect.SetNode(const Value: TNode);
 begin
-  FNode := Value;
-  FSafeBox := FNode.Bank.SafeBox;
+  FSafeBox := PascalCoinNode.Bank.SafeBox;
   UpdateControls;
 end;
 
@@ -504,7 +500,7 @@ begin
      (Not searchValues.onlyForPrivateSaleToMe) And (Not searchValues.onlyForPublicSale) And (Not searchValues.onlyForSale) And
      (searchValues.searchName='') then begin
     FAccountsGrid.ShowAllAccounts:=True;
-    lblAccountsCount.Caption := IntToStr(FAccountsGrid.Node.Bank.SafeBox.AccountsCount);
+    lblAccountsCount.Caption := IntToStr(PascalCoinNode.Bank.SafeBox.AccountsCount);
     lblAccountsBalance.Caption := TAccountComp.FormatMoney(FAccountsGrid.AccountsBalance);
   end else begin
     FAccountsGrid.ShowAllAccounts:=False;

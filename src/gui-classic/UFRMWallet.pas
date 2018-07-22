@@ -317,9 +317,9 @@ Type
 procedure TThreadActivate.BCExecute;
 begin
   // Read Operations saved from disk
-  TNode.Node.InitSafeboxAndOperations; // New Build 2.1.4 to load pending operations buffer
-  TNode.Node.AutoDiscoverNodes(CT_Discover_IPs);
-  TNode.Node.NetServer.Active := true;
+  PascalCoinNode.InitSafeboxAndOperations; // New Build 2.1.4 to load pending operations buffer
+  PascalCoinNode.AutoDiscoverNodes(CT_Discover_IPs);
+  PascalCoinNode.NetServer.Active := true;
   Synchronize( FRMWallet.DoUpdateAccounts );
   Synchronize( FRMWallet.FinishedLoadingApp );
 end;
@@ -352,7 +352,7 @@ begin
     TNetData.NetData.DiscoverFixedServersOnly(nsarr);
     setlength(nsarr,0);
     // Creating Node:
-    FNode := TNode.Node;
+    FNode := TNode.Create(Self);
     FNode.NetServer.Port := FAppParams.ParamByName[CT_PARAM_InternetServerPort].GetAsInteger(CT_NetServer_Port);
     FNode.PeerCache := FAppParams.ParamByName[CT_PARAM_PeerCache].GetAsString('')+';'+CT_Discover_IPs;
     // Create RPC server
@@ -367,17 +367,13 @@ begin
     TFileStorage(FNode.Bank.Storage).Initialize;
     // Init Grid
     //FAccountsGrid.Node := FNode;
-    FSelectedAccountsGrid.Node := FNode;
     FWalletKeys.OnChanged.Add( OnWalletChanged );
-    FAccountsGrid.Node := FNode;
-    FOperationsAccountGrid.Node := FNode;
     FBlockChainGrid.HashRateAverageBlocksCount := FAppParams.ParamByName[CT_PARAM_HashRateAvgBlocksCount].GetAsInteger(50);
     i := FAppParams.ParamByName[CT_PARAM_ShowHashRateAs].GetAsInteger(Integer({$IFDEF TESTNET}hr_Mega{$ELSE}hr_Tera{$ENDIF}));
     if (i<Integer(Low(TShowHashRateAs))) Or (i>Integer(High(TShowHashRateAs))) then i := Integer({$IFDEF TESTNET}hr_Mega{$ELSE}hr_Tera{$ENDIF});
     FBlockChainGrid.HashRateAs := TShowHashRateAs(i);
     // Reading database
     TThreadActivate.Create(false).FreeOnTerminate := true;
-    FNodeNotifyEvents.Node := FNode;
     // Init
     TNetData.NetData.OnReceivedHelloMessage := OnReceivedHelloMessage;
     TNetData.NetData.OnStatisticsChanged := OnNetStatisticsChanged;
@@ -993,12 +989,6 @@ begin
   //
   step := 'Assigning nil events';
   FLog.OnNewLog :=Nil;
-  FNodeNotifyEvents.Node := Nil;
-  FOperationsAccountGrid.Node := Nil;
-  FOperationsExplorerGrid.Node := Nil;
-  FPendingOperationsGrid.Node := Nil;
-  FAccountsGrid.Node := Nil;
-  FSelectedAccountsGrid.Node := Nil;
   TNetData.NetData.OnReceivedHelloMessage := Nil;
   TNetData.NetData.OnStatisticsChanged := Nil;
   TNetData.NetData.OnNetConnectionsUpdated := Nil;
@@ -1022,7 +1012,7 @@ begin
   FreeAndNil(FOrderedAccountsKeyList);
 
   step := 'Desactivating Node';
-  TNode.Node.NetServer.Active := false;
+  PascalCoinNode.NetServer.Active := false;
   FNode := Nil;
 
   TNetData.NetData.Free;
@@ -1031,7 +1021,7 @@ begin
   Application.ProcessMessages;
 
   step := 'Destroying Node';
-  TNode.Node.Free;
+  PascalCoinNode.Free;
 
   step := 'Destroying Wallet';
   FreeAndNil(FWalletKeys);
@@ -1077,7 +1067,6 @@ Var F : TFRMAccountSelect;
 begin
   F := TFRMAccountSelect.Create(Self);
   try
-    F.Node := FNode;
     F.WalletKeys := FWalletKeys;
     F.ShowModal;
   finally
@@ -1575,7 +1564,7 @@ begin
     s := s + nsarr[i].ip+':'+IntToStr( nsarr[i].port );
   end;
   FAppParams.ParamByName[CT_PARAM_PeerCache].SetAsString(s);
-  TNode.Node.PeerCache := s;
+  PascalCoinNode.PeerCache := s;
 end;
 
 procedure TFRMWallet.OnSelectedAccountsGridUpdated(Sender: TObject);
@@ -1595,23 +1584,20 @@ procedure TFRMWallet.PageControlChange(Sender: TObject);
 begin
   MiDecodePayload.Enabled := false;
   if PageControl.ActivePage=tsMyAccounts then begin
-    //FAccountsGrid.Node := FNode;
     MiDecodePayload.Enabled := true;
-    FSelectedAccountsGrid.Node := FNode;
-  end else begin
-    //FAccountsGrid.Node := Nil;
-    FSelectedAccountsGrid.Node := Nil;
   end;
+  FSelectedAccountsGrid.UpdateGrid;
   if PageControl.ActivePage=tsPendingOperations then begin
-    FPendingOperationsGrid.Node := FNode;
+    FPendingOperationsGrid.UpdateAccountOperations;
     MiDecodePayload.Enabled := true;
-  end else FPendingOperationsGrid.Node := Nil;
-  if PageControl.ActivePage=tsBlockChain then FBlockChainGrid.Node := FNode
-  else FBlockChainGrid.Node := Nil;
+  end;
+  if PageControl.ActivePage=tsBlockChain then begin
+    FBlockChainGrid.UpdateBlockChainGrid;
+  end;
   if PageControl.ActivePage=tsOperations then begin
-    FOperationsExplorerGrid.Node := FNode;
+    FOperationsExplorerGrid.UpdateAccountOperations;
     MiDecodePayload.Enabled := true;
-  end else FOperationsExplorerGrid.Node := Nil;
+  end;
   if PageControl.ActivePage=tsMessages then begin
     UpdateAvailableConnections;
     FMessagesUnreadCount := 0;

@@ -62,8 +62,6 @@ Type
   protected
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
   public
-    Class Function Node : TNode;
-    Class Function NodeExists : Boolean;
     Class Procedure DecodeIpStringToNodeServerAddressArray(Const Ips : AnsiString; Var NodeServerAddressArray : TNodeServerAddressArray);
     Class Function EncodeNodeServerAddressArrayToIpString(Const NodeServerAddressArray : TNodeServerAddressArray) : AnsiString;
     Constructor Create(AOwner : TComponent); override;
@@ -117,7 +115,6 @@ Type
   { TNodeNotifyEvents is ThreadSafe and will only notify in the main thread }
   TNodeNotifyEvents = Class(TComponent)
   private
-    FNode: TNode;
     FOnKeyActivity: TNotifyEvent;
     FPendingNotificationsList : TPCThreadList;
     FThreadSafeNodeNotifyEvent : TThreadSafeNodeNotifyEvent;
@@ -126,7 +123,6 @@ Type
     FMessages : TStringList;
     FOnNodeMessageEvent: TNodeMessageEvent;
     FWatchKeys: TOrderedAccountKeysList;
-    procedure SetNode(const Value: TNode);
     Procedure NotifyBlocksChanged;
     Procedure NotifyOperationsChanged;
     procedure SetWatchKeys(AValue: TOrderedAccountKeysList);
@@ -135,7 +131,6 @@ Type
   public
     Constructor Create(AOwner : TComponent); override;
     Destructor Destroy; override;
-    Property Node : TNode read FNode write SetNode;
     Property OnBlocksChanged : TNotifyEvent read FOnBlocksChanged write FOnBlocksChanged;
     Property OnOperationsChanged : TNotifyEvent read FOnOperationsChanged write FOnOperationsChanged;
     Property OnNodeMessageEvent : TNodeMessageEvent read FOnNodeMessageEvent write FOnNodeMessageEvent;
@@ -163,11 +158,12 @@ Type
     destructor Destroy; override;
   End;
 
+var
+  PascalCoinNode : TNode;
+
 implementation
 
 Uses UOpTransaction, SysUtils,  UConst, UTime;
-
-var _Node : TNode;
 
 { TNode }
 
@@ -503,7 +499,7 @@ begin
   FNodeLog := TLog.Create(Self);
   FNodeLog.ProcessGlobalLogs := false;
   RegisterOperationsClass;
-  if Assigned(_Node) then raise Exception.Create('Duplicate nodes protection');
+  if Assigned(PascalCoinNode) then raise Exception.Create('Duplicate nodes protection');
   TLog.NewLog(ltInfo,ClassName,'TNode.Create');
   inherited;
   FDisabledsNewBlocksCount := 0;
@@ -520,7 +516,7 @@ begin
   {$IFDEF BufferOfFutureOperations}
   FBufferAuxWaitingOperations := TOperationsHashTree.Create;
   {$ENDIF}
-  if Not Assigned(_Node) then _Node := Self;
+  if Not Assigned(PascalCoinNode) then PascalCoinNode := Self;
 end;
 
 class procedure TNode.DecodeIpStringToNodeServerAddressArray(
@@ -590,7 +586,7 @@ begin
     step := 'Destroying Operations';
     FreeAndNil(FOperations);
     step := 'Assigning NIL to node var';
-    if _Node=Self then _Node := Nil;
+    if PascalCoinNode=Self then PascalCoinNode := Nil;
     Step := 'Destroying SentOperations list';
     FreeAndNil(FSentOperations);
 
@@ -700,17 +696,6 @@ end;
 function TNode.NetServer: TNetServer;
 begin
   Result := FNetServer;
-end;
-
-class function TNode.Node: TNode;
-begin
-  if not assigned(_Node) then _Node := TNode.Create(Nil);
-  Result := _Node;
-end;
-
-class function TNode.NodeExists: Boolean;
-begin
-  Result := Assigned(_Node);
 end;
 
 procedure TNode.Notification(AComponent: TComponent; Operation: TOperation);
@@ -1128,12 +1113,17 @@ begin
   FPendingNotificationsList := TPCThreadList.Create('TNodeNotifyEvents_PendingNotificationsList');
   FThreadSafeNodeNotifyEvent := TThreadSafeNodeNotifyEvent.Create(Self);
   FThreadSafeNodeNotifyEvent.FreeOnTerminate := true; // This is to prevent locking when freeing component
-  Node := _Node;
 end;
 
 destructor TNodeNotifyEvents.Destroy;
 begin
-  if Assigned(FNode) then FNode.FNotifyList.Remove(Self);
+  // skybuck: added nil check, this probably not source of problem, but helps a little bit ;)
+  // threads should probably be waited for and destroyed in a certain order... elsewhere...
+  // also locks should probably be cleaned up last.
+  if PascalCoinNode <> nil then
+  begin
+    PascalCoinNode.FNotifyList.Remove(Self);
+  end;
   FThreadSafeNodeNotifyEvent.FNodeNotifyEvents := Nil;
   FThreadSafeNodeNotifyEvent.Terminate;
   FreeAndNil(FPendingNotificationsList);
@@ -1144,9 +1134,6 @@ end;
 procedure TNodeNotifyEvents.Notification(AComponent: TComponent; Operation: TOperation);
 begin
   inherited;
-  if (Operation=opremove) then begin
-    if AComponent=FNode then FNode := Nil;
-  end;
 end;
 
 procedure TNodeNotifyEvents.NotifyBlocksChanged;
@@ -1163,20 +1150,6 @@ procedure TNodeNotifyEvents.SetWatchKeys(AValue: TOrderedAccountKeysList);
 begin
   if FWatchKeys=AValue then Exit;
   FWatchKeys:=AValue;
-end;
-
-procedure TNodeNotifyEvents.SetNode(const Value: TNode);
-begin
-  if FNode=Value then exit;
-  if Assigned(FNode) then begin
-    FNode.RemoveFreeNotification(Self);
-    FNode.FNotifyList.Remove(Self);
-  end;
-  FNode := Value;
-  if Assigned(FNode) then begin
-    FNode.FreeNotification(Self);
-    FNode.FNotifyList.Add(Self);
-  end;
 end;
 
 { TThreadSafeNodeNotifyEvent }
@@ -1319,7 +1292,7 @@ begin
 end;
 
 initialization
-  _Node := Nil;
+
 finalization
-  FreeAndNil(_Node);
+
 end.
